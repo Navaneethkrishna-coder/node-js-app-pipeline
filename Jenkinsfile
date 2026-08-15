@@ -39,7 +39,7 @@ pipeline {
 
     stage('Build and Push Docker Image') {
       environment {
-        DOCKER_IMAGE = "gopikakt2005/ultimate-cicd:${BUILD_NUMBER}"
+        DOCKER_IMAGE = "dockernavaneeth/ultimate-cicd:${BUILD_NUMBER}"
       }
       steps {
         script {
@@ -55,13 +55,13 @@ pipeline {
 
     stage('Update Deployment File') {
       environment {
-        GIT_REPO_NAME = "java-maven-sonar-argocd"
-        GIT_USER_NAME = "gopikakt2005"
+        GIT_REPO_NAME = "node-js-app-pipeline"
+        GIT_USER_NAME = "Navaneethkrishna-coder"
       }
       steps {
         withCredentials([
             usernamePassword(
-                credentialsId: 'git-hub',
+                credentialsId: 'github',
                 usernameVariable: 'GITHUB_USERNAME',
                 passwordVariable: 'GITHUB_TOKEN'
             )
@@ -71,10 +71,10 @@ pipeline {
                 git clone https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git repo-temp
                 cd repo-temp
                 
-                git config user.email "gopikakt2005@gmail.com"
+                git config user.email "navaneethkrishna008@gmail.com"
                 git config user.name "${GIT_USER_NAME}"
 
-                sed -i "s|image: .*|image: gopikakt2005/ultimate-cicd:${BUILD_NUMBER}|g" node-app-manifests/deployment.yml
+                sed -i "s|image: .*|image: dockernavaneeth/ultimate-cicd:${BUILD_NUMBER}|g" node-app-manifests/deployment.yml
 
                 git add node-app-manifests/deployment.yml
                 git commit -m "Update static site image tag to ${BUILD_NUMBER} [skip ci]" || echo "No changes to commit"
