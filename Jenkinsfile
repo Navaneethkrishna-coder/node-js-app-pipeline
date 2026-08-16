@@ -39,38 +39,43 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonarqube') {
-                    sh '''
-                        echo "Installing Java 17 and SonarScanner..."
+    steps {
+        withSonarQubeEnv('sonarqube') {
+            sh '''
+                set -e
 
-                        apt-get update
-                        apt-get install -y \
-                            openjdk-17-jre-headless \
-                            curl \
-                            unzip
+                echo "Installing Java..."
+                apt-get update -qq
+                apt-get install -y -qq openjdk-17-jre-headless curl unzip
 
-                        java -version
+                java -version
 
-                        cd node-app
+                cd node-app
 
-                        curl -L -o sonar-scanner.zip \
-                            https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-7.2.0.5079-linux-x64.zip
+                echo "Cleaning old SonarScanner..."
+                rm -rf sonar-scanner-cli-7.2.0.5079-linux-x64
+                rm -f sonar-scanner.zip
 
-                        unzip -q sonar-scanner.zip
+                echo "Downloading SonarScanner..."
+                curl -fsSL -o sonar-scanner.zip \
+                  https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-7.2.0.5079-linux-x64.zip
 
-                        echo "Running SonarQube analysis..."
+                echo "Extracting SonarScanner..."
+                unzip -q -o sonar-scanner.zip
 
-                        ./sonar-scanner-7.2.0.5079-linux-x64/bin/sonar-scanner \
-                            -Dsonar.projectKey=node-express-app \
-                            -Dsonar.projectName="Node Express App" \
-                            -Dsonar.sources=. \
-                            -Dsonar.exclusions=node_modules/**,coverage/** \
-                            -Dsonar.host.url=$SONAR_HOST_URL
-                    '''
-                }
-            }
+                echo "Running SonarQube analysis..."
+
+                ./sonar-scanner-cli-7.2.0.5079-linux-x64/bin/sonar-scanner \
+                  -Dsonar.projectKey=node-express-app \
+                  -Dsonar.projectName="Node Express App" \
+                  -Dsonar.sources=. \
+                  -Dsonar.exclusions=node_modules/**,coverage/**
+
+                echo "SonarQube analysis completed successfully."
+            '''
         }
+    }
+}
 
         stage('Install Docker CLI and Buildx') {
             steps {
