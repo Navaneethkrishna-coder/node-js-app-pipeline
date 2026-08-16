@@ -109,34 +109,39 @@ pipeline {
         }
 
         stage('Build and Push Docker Image') {
-            steps {
-                sh '''
-                    echo "Creating Buildx builder..."
+    environment {
+        DOCKER_IMAGE = "dockernavaneeth/ultimate-cicd:${BUILD_NUMBER}"
+    }
 
-                    docker buildx create \
-                        --name jenkins-multiarch \
-                        --driver docker-container \
-                        --use \
-                        || docker buildx use jenkins-multiarch
+    steps {
+        withCredentials([
+            usernamePassword(
+                credentialsId: 'dockerhub-credentials',
+                usernameVariable: 'DOCKER_USERNAME',
+                passwordVariable: 'DOCKER_PASSWORD'
+            )
+        ]) {
+            sh '''
+                echo "$DOCKER_PASSWORD" | docker login \
+                    --username "$DOCKER_USERNAME" \
+                    --password-stdin
 
-                    echo "Bootstrapping Buildx..."
+                docker buildx use multiarch-builder
 
-                    docker buildx inspect --bootstrap
+                docker buildx inspect multiarch-builder --bootstrap
 
-                    echo "Building multi-platform image..."
+                docker buildx build \
+                    --platform linux/amd64,linux/arm64 \
+                    -t "$DOCKER_IMAGE" \
+                    -t "dockernavaneeth/ultimate-cicd:latest" \
+                    --push \
+                    node-app
 
-                    docker buildx build \
-                        --platform linux/amd64,linux/arm64 \
-                        -t ${DOCKER_IMAGE} \
-                        -t ${DOCKER_REPO}:latest \
-                        --push \
-                        node-app
-
-                    echo "Docker image pushed successfully:"
-                    echo "${DOCKER_IMAGE}"
-                '''
-            }
+                docker logout
+            '''
         }
+    }
+}
 
         stage('Update Deployment File') {
             steps {
