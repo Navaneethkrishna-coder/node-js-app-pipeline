@@ -71,26 +71,24 @@ pipeline {
   }
 }
     stage('Build and Push Docker Image') {
-      environment {
+    environment {
         DOCKER_IMAGE = "dockernavaneeth/ultimate-cicd:${BUILD_NUMBER}"
-      }
-
-      steps {
-        script {
-          sh 'docker build -t ${DOCKER_IMAGE} node-app'
-
-          def dockerImage = docker.image("${DOCKER_IMAGE}")
-
-          docker.withRegistry(
-            'https://index.docker.io/v1/',
-            'docker-cred'
-          ) {
-            dockerImage.push()
-            dockerImage.push('latest')
-          }
-        }
-      }
     }
+    steps {
+        script {
+            sh '''
+                docker buildx use multiarch-builder
+
+                docker buildx build \
+                    --platform linux/amd64,linux/arm64 \
+                    -t ${DOCKER_IMAGE} \
+                    -t dockernavaneeth/ultimate-cicd:latest \
+                    --push \
+                    node-app
+            '''
+        }
+    }
+}
 
     stage('Update Deployment File') {
       environment {
