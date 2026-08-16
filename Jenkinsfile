@@ -6,11 +6,21 @@ pipeline {
         }
     }
 
+    environment {
+        DOCKER_IMAGE = "dockernavaneeth/ultimate-cicd:${BUILD_NUMBER}"
+        DOCKER_REPO  = "dockernavaneeth/ultimate-cicd"
+        GIT_REPO_NAME = "node-js-app-pipeline"
+        GIT_USER_NAME = "Navaneethkrishna-coder"
+    }
+
     stages {
 
         stage('Checkout') {
             steps {
-                sh 'echo "Starting build process..."'
+                sh '''
+                    echo "Starting CI/CD pipeline..."
+                    echo "Build Number: ${BUILD_NUMBER}"
+                '''
             }
         }
 
@@ -18,7 +28,11 @@ pipeline {
             steps {
                 sh '''
                     cd node-app
+
+                    echo "Installing Node.js dependencies..."
                     npm ci
+
+                    echo "Running tests..."
                     npm test
                 '''
             }
@@ -27,22 +41,33 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
-                    script {
-                        def scannerHome = tool 'sonarscanner'
+                    sh '''
+                        echo "Installing Java 17 and SonarScanner..."
 
-                        sh """
-                            apt-get update
-                            apt-get install -y openjdk-17-jre-headless
+                        apt-get update
+                        apt-get install -y \
+                            openjdk-17-jre-headless \
+                            curl \
+                            unzip
 
-                            cd node-app
+                        java -version
 
-                            ${scannerHome}/bin/sonar-scanner \
-                              -Dsonar.projectKey=node-express-app \
-                              -Dsonar.projectName="Node Express App" \
-                              -Dsonar.sources=. \
-                              -Dsonar.exclusions=node_modules/**,coverage/**
-                        """
-                    }
+                        cd node-app
+
+                        curl -L -o sonar-scanner.zip \
+                            https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-7.2.0.5079-linux-x64.zip
+
+                        unzip -q sonar-scanner.zip
+
+                        echo "Running SonarQube analysis..."
+
+                        ./sonar-scanner-7.2.0.5079-linux-x64/bin/sonar-scanner \
+                            -Dsonar.projectKey=node-express-app \
+                            -Dsonar.projectName="Node Express App" \
+                            -Dsonar.sources=. \
+                            -Dsonar.exclusions=node_modules/**,coverage/** \
+                            -Dsonar.host.url=$SONAR_HOST_URL
+                    '''
                 }
             }
         }
@@ -50,6 +75,8 @@ pipeline {
         stage('Install Docker CLI and Buildx') {
             steps {
                 sh '''
+                    echo "Installing Docker CLI and Buildx..."
+
                     apt-get update
 
                     apt-get install -y \
@@ -72,54 +99,46 @@ pipeline {
                         docker-ce-cli \
                         docker-buildx-plugin
 
-                    echo "Docker version:"
+                    echo "Docker:"
                     docker --version
 
-                    echo "Docker Buildx version:"
+                    echo "Buildx:"
                     docker buildx version
                 '''
             }
         }
 
         stage('Build and Push Docker Image') {
-            environment {
-                DOCKER_IMAGE = "dockernavaneeth/ultimate-cicd:${BUILD_NUMBER}"
-            }
-
             steps {
-                script {
-                    sh '''
-                        echo "Creating multi-platform Buildx builder..."
+                sh '''
+                    echo "Creating Buildx builder..."
 
-                        docker buildx create \
-                            --name jenkins-multiarch \
-                            --driver docker-container \
-                            --use \
-                            || docker buildx use jenkins-multiarch
+                    docker buildx create \
+                        --name jenkins-multiarch \
+                        --driver docker-container \
+                        --use \
+                        || docker buildx use jenkins-multiarch
 
-                        echo "Bootstrapping Buildx..."
+                    echo "Bootstrapping Buildx..."
 
-                        docker buildx inspect --bootstrap
+                    docker buildx inspect --bootstrap
 
-                        echo "Building AMD64 and ARM64 Docker images..."
+                    echo "Building multi-platform image..."
 
-                        docker buildx build \
-                            --platform linux/amd64,linux/arm64 \
-                            -t ${DOCKER_IMAGE} \
-                            -t dockernavaneeth/ultimate-cicd:latest \
-                            --push \
-                            node-app
-                    '''
-                }
+                    docker buildx build \
+                        --platform linux/amd64,linux/arm64 \
+                        -t ${DOCKER_IMAGE} \
+                        -t ${DOCKER_REPO}:latest \
+                        --push \
+                        node-app
+
+                    echo "Docker image pushed successfully:"
+                    echo "${DOCKER_IMAGE}"
+                '''
             }
         }
 
         stage('Update Deployment File') {
-            environment {
-                GIT_REPO_NAME = "node-js-app-pipeline"
-                GIT_USER_NAME = "Navaneethkrishna-coder"
-            }
-
             steps {
                 withCredentials([
                     usernamePassword(
@@ -129,33 +148,57 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        echo "Cloning deployment repository..."
+                        echo "Cloning GitOps repository..."
 
                         rm -rf repo-temp
 
-                        git clone https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git repo-temp
+                        git clone \
+                            https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git \
+                            repo-temp
 
                         cd repo-temp
 
                         git config user.email "navaneethkrishna008@gmail.com"
                         git config user.name "${GIT_USER_NAME}"
 
-                        echo "Updating Kubernetes deployment image..."
+                        echo "Updating Kubernetes image..."
 
-                        sed -i "s|image: .*|image: dockernavaneeth/ultimate-cicd:${BUILD_NUMBER}|g" node-app-manifests/deployment.yml
+                        sed -i \
+                            "s|image: .*|image: ${DOCKER_IMAGE}|g" \
+                            node-app-manifests/deployment.yml
+
+                        echo "Updated deployment:"
+                        grep "image:" node-app-manifests/deployment.yml
 
                         git add node-app-manifests/deployment.yml
 
                         git commit \
-                            -m "Update Node.js app image tag to ${BUILD_NUMBER} [skip ci]" \
+                            -m "Update Node.js app image to ${BUILD_NUMBER} [skip ci]" \
                             || echo "No changes to commit"
 
                         git push origin main
 
-                        echo "Deployment manifest updated successfully."
+                        echo "GitOps repository updated successfully."
                     '''
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo '======================================'
+            echo 'PIPELINE SUCCESSFUL'
+            echo '======================================'
+            echo "Docker Image: ${DOCKER_IMAGE}"
+            echo 'Argo CD will detect the Git change and sync the application.'
+        }
+
+        failure {
+            echo '======================================'
+            echo 'PIPELINE FAILED'
+            echo '======================================'
+            echo 'Check the failed stage above.'
         }
     }
 }
