@@ -77,7 +77,12 @@ pipeline {
     steps {
         script {
             sh '''
-                docker buildx use multiarch-builder
+                docker buildx create \
+                    --name jenkins-multiarch \
+                    --driver docker-container \
+                    --use || docker buildx use jenkins-multiarch
+
+                docker buildx inspect --bootstrap
 
                 docker buildx build \
                     --platform linux/amd64,linux/arm64 \
