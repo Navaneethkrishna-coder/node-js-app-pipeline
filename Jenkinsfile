@@ -113,37 +113,41 @@ pipeline {
         // ============================================================
 
         stage('SonarQube Analysis') {
-            steps {
+    steps {
+        withSonarQubeEnv('sonarqube') {
 
-                withSonarQubeEnv('sonarqube') {
+            withCredentials([
+                string(
+                    credentialsId: 'sonarqube',
+                    variable: 'SONAR_TOKEN'
+                )
+            ]) {
 
-                    sh '''
-                        set -e
+                sh '''
+                    set -e
 
-                        echo "======================================"
-                        echo "Starting SonarQube Analysis"
-                        echo "======================================"
+                    echo "Starting SonarQube Analysis..."
 
-                        docker pull sonarsource/sonar-scanner-cli:latest
+                    docker pull sonarsource/sonar-scanner-cli:latest
 
-                        docker run --rm \
-                            --network host \
-                            -e SONAR_HOST_URL="${SONAR_HOST_URL}" \
-                            -v "${WORKSPACE}/node-app:/usr/src" \
-                            sonarsource/sonar-scanner-cli:latest \
-                            -Dsonar.projectKey=node-express-app \
-                            -Dsonar.projectName="Node Express App" \
-                            -Dsonar.sources=. \
-                            -Dsonar.exclusions=node_modules/**,coverage/**
+                    docker run --rm \
+                        --network host \
+                        -e SONAR_HOST_URL="${SONAR_HOST_URL}" \
+                        -e SONAR_TOKEN="${SONAR_TOKEN}" \
+                        -v "${WORKSPACE}/node-app:/usr/src" \
+                        sonarsource/sonar-scanner-cli:latest \
+                        -Dsonar.projectKey=node-express-app \
+                        -Dsonar.projectName="Node Express App" \
+                        -Dsonar.sources=. \
+                        -Dsonar.exclusions=node_modules/**,coverage/** \
+                        -Dsonar.token="${SONAR_TOKEN}"
 
-                        echo ""
-                        echo "======================================"
-                        echo "SonarQube Analysis Successful"
-                        echo "======================================"
-                    '''
-                }
+                    echo "SonarQube Analysis Successful!"
+                '''
             }
         }
+    }
+}
 
 
         // ============================================================
