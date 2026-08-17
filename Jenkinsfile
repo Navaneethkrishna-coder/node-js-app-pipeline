@@ -155,88 +155,50 @@ pipeline {
         // ============================================================
 
         stage('Build and Push Docker Image') {
+    steps {
+        withCredentials([
+            usernamePassword(
+                credentialsId: 'docker-cred',
+                usernameVariable: 'DOCKER_USERNAME',
+                passwordVariable: 'DOCKER_PASSWORD'
+            )
+        ]) {
+            sh '''
+                set -e
 
-            steps {
+                echo "$DOCKER_PASSWORD" | docker login \
+                    --username "$DOCKER_USERNAME" \
+                    --password-stdin
 
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-credentials',
-                        usernameVariable: 'DOCKER_USERNAME',
-                        passwordVariable: 'DOCKER_PASSWORD'
-                    )
-                ]) {
+                echo "Docker login successful"
 
-                    sh '''
-                        set -e
+                BUILDER_NAME="jenkins-builder-${BUILD_NUMBER}"
 
-                        echo "======================================"
-                        echo "Docker Hub Login"
-                        echo "======================================"
+                docker buildx create \
+                    --name "$BUILDER_NAME" \
+                    --driver docker-container \
+                    --use
 
-                        echo "$DOCKER_PASSWORD" | docker login \
-                            --username "$DOCKER_USERNAME" \
-                            --password-stdin
+                docker buildx inspect "$BUILDER_NAME" --bootstrap
 
-                        echo ""
-                        echo "Docker login successful"
+                docker buildx build \
+                    --builder "$BUILDER_NAME" \
+                    --platform linux/amd64,linux/arm64 \
+                    -t "${DOCKER_REPO}:${BUILD_NUMBER}" \
+                    -t "${DOCKER_REPO}:latest" \
+                    --push \
+                    node-app
 
+                docker buildx rm "$BUILDER_NAME" || true
 
-                        echo ""
-                        echo "======================================"
-                        echo "Creating Multi-Architecture Builder"
-                        echo "======================================"
+                docker logout
 
-                        BUILDER_NAME="jenkins-builder-${BUILD_NUMBER}"
-
-                        docker buildx create \
-                            --name "$BUILDER_NAME" \
-                            --driver docker-container \
-                            --use
-
-                        docker buildx inspect "$BUILDER_NAME" --bootstrap
-
-
-                        echo ""
-                        echo "======================================"
-                        echo "Building Multi-Architecture Image"
-                        echo "======================================"
-
-                        docker buildx build \
-                            --builder "$BUILDER_NAME" \
-                            --platform linux/amd64,linux/arm64 \
-                            -t "${DOCKER_REPO}:${BUILD_NUMBER}" \
-                            -t "${DOCKER_REPO}:latest" \
-                            --push \
-                            node-app
-
-
-                        echo ""
-                        echo "======================================"
-                        echo "Docker Image Successfully Pushed"
-                        echo "======================================"
-
-                        echo "Image:"
-                        echo "${DOCKER_REPO}:${BUILD_NUMBER}"
-
-                        echo ""
-                        echo "Latest:"
-                        echo "${DOCKER_REPO}:latest"
-
-
-                        echo ""
-                        echo "Removing temporary builder..."
-
-                        docker buildx rm "$BUILDER_NAME" || true
-
-
-                        echo ""
-                        echo "Logging out from Docker Hub..."
-
-                        docker logout
-                    '''
-                }
-            }
+                echo "Docker image pushed successfully:"
+                echo "${DOCKER_REPO}:${BUILD_NUMBER}"
+            '''
         }
+    }
+}
 
 
         // ============================================================
